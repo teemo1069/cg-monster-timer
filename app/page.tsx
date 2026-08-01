@@ -10,13 +10,16 @@ const ADMIN_SESSION_KEY = "waterblue-admin-session-v2";
 const ADMIN_AUTH_ENDPOINT = "https://joprrlzjdevijembcdii.supabase.co/functions/v1/admin-auth";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_OTVTHpb0AM_kS_DAA2wVTA_6zcWoP0s";
 type Server = (typeof SERVERS)[number];
-type Tone = "sumi" | "indigo" | "cinnabar" | "moss";
 type Timer = { id: string; server: Server; monster: string; multiplier: number; appearedAt: number; createdAt: number };
 type AuthReply = { authenticated?: boolean; username?: string; mustChangePassword?: boolean; sessionToken?: string; expiresAt?: string; changed?: boolean; error?: string };
-const INKS: Record<Tone, { label: string; rgb: string }> = {
-  sumi: { label: "玄墨", rgb: "32,37,35" }, indigo: { label: "藍墨", rgb: "35,66,86" },
-  cinnabar: { label: "朱墨", rgb: "129,50,37" }, moss: { label: "苔墨", rgb: "55,76,58" },
-};
+const INK_PRESETS = [
+  { label: "玄墨", hex: "#202523" },
+  { label: "藍墨", hex: "#234256" },
+  { label: "朱墨", hex: "#813225" },
+  { label: "苔墨", hex: "#374C3A" },
+] as const;
+const DEFAULT_INK = INK_PRESETS[0].hex;
+const INK_STORAGE_KEY = "waterblue-ink-color";
 
 function valid(v: unknown): v is Timer {
   const x = v as Partial<Timer>;
@@ -39,6 +42,11 @@ function clock(ms: number) {
 function dateTime(ms: number) {
   return new Intl.DateTimeFormat("zh-TW", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(ms);
 }
+function validHex(value: string) { return /^#[0-9a-f]{6}$/i.test(value); }
+function hexRgb(value: string) {
+  const hex = validHex(value) ? value.slice(1) : DEFAULT_INK.slice(1);
+  return `${Number.parseInt(hex.slice(0,2),16)},${Number.parseInt(hex.slice(2,4),16)},${Number.parseInt(hex.slice(4,6),16)}`;
+}
 async function adminAuth(body: Record<string, unknown>): Promise<AuthReply> {
   const response = await fetch(ADMIN_AUTH_ENDPOINT, {
     method: "POST",
@@ -53,7 +61,7 @@ async function adminAuth(body: Record<string, unknown>): Promise<AuthReply> {
   return data;
 }
 
-function InkCanvas({ tone, auto, wash }: { tone: Tone; auto: boolean; wash: number }) {
+function InkCanvas({ tone, auto, wash }: { tone: string; auto: boolean; wash: number }) {
   const ref = useRef<HTMLCanvasElement>(null), toneRef = useRef(tone), autoRef = useRef(auto), washRef = useRef(wash);
   useEffect(() => { toneRef.current = tone; }, [tone]);
   useEffect(() => { autoRef.current = auto; }, [auto]);
@@ -63,7 +71,7 @@ function InkCanvas({ tone, auto, wash }: { tone: Tone; auto: boolean; wash: numb
     type P = { x:number;y:number;vx:number;vy:number;life:number;max:number;size:number;rgb:string;seed:number };
     const ps:P[] = []; let w=0,h=0,dpr=1,frame=0,last=0,currentWash=washRef.current; const pointer={x:0,y:0,down:false};
     const resize=()=>{dpr=Math.min(devicePixelRatio||1,1.6);w=innerWidth;h=innerHeight;canvas.width=w*dpr;canvas.height=h*dpr;canvas.style.width=w+"px";canvas.style.height=h+"px";ctx.setTransform(dpr,0,0,dpr,0,0);};
-    const drop=(x:number,y:number,force=1,vx=0,vy=0)=>{const rgb=INKS[toneRef.current].rgb,n=Math.min(36,Math.round(17*force));for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,r=Math.pow(Math.random(),1.8)*22*force,life=100+Math.random()*100;ps.push({x:x+Math.cos(a)*r,y:y+Math.sin(a)*r,vx:vx*(.1+Math.random()*.2)+Math.cos(a)*Math.random()*.38,vy:vy*(.1+Math.random()*.2)+Math.sin(a)*Math.random()*.38,life,max:life,size:(7+Math.random()*23)*force,rgb,seed:Math.random()*6.28});}if(ps.length>850)ps.splice(0,ps.length-850);};
+    const drop=(x:number,y:number,force=1,vx=0,vy=0)=>{const rgb=hexRgb(toneRef.current),n=Math.min(36,Math.round(17*force));for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,r=Math.pow(Math.random(),1.8)*22*force,life=100+Math.random()*100;ps.push({x:x+Math.cos(a)*r,y:y+Math.sin(a)*r,vx:vx*(.1+Math.random()*.2)+Math.cos(a)*Math.random()*.38,vy:vy*(.1+Math.random()*.2)+Math.sin(a)*Math.random()*.38,life,max:life,size:(7+Math.random()*23)*force,rgb,seed:Math.random()*6.28});}if(ps.length>850)ps.splice(0,ps.length-850);};
     const down=(e:PointerEvent)=>{pointer.x=e.clientX;pointer.y=e.clientY;pointer.down=true;drop(pointer.x,pointer.y,1.25);};
     const move=(e:PointerEvent)=>{const dx=e.clientX-pointer.x,dy=e.clientY-pointer.y;pointer.x=e.clientX;pointer.y=e.clientY;if(pointer.down)drop(pointer.x,pointer.y,.7,dx,dy);};
     const up=()=>{pointer.down=false;};
@@ -79,14 +87,15 @@ function InkCanvas({ tone, auto, wash }: { tone: Tone; auto: boolean; wash: numb
 export default function Home() {
   const [timers,setTimers]=useState<Timer[]>([]),[now,setNow]=useState(0),[ready,setReady]=useState(false),[server,setServer]=useState<Server>(SERVERS[0]);
   const [monster,setMonster]=useState(""),[multiplier,setMultiplier]=useState(1),[appeared,setAppeared]=useState(""),[error,setError]=useState("");
-  const [tone,setTone]=useState<Tone>("sumi"),[auto,setAuto]=useState(true),[wash,setWash]=useState(0);
+  const [tone,setTone]=useState<string>(DEFAULT_INK),[inkCode,setInkCode]=useState<string>(DEFAULT_INK),[auto,setAuto]=useState(true),[wash,setWash]=useState(0);
   const [adminOpen,setAdminOpen]=useState(false),[admin,setAdmin]=useState(false),[user,setUser]=useState(""),[pass,setPass]=useState(""),[loginError,setLoginError]=useState("");
   const [authBusy,setAuthBusy]=useState(false),[authChecking,setAuthChecking]=useState(true),[mustChangePassword,setMustChangePassword]=useState(false);
   const [newPass,setNewPass]=useState(""),[confirmPass,setConfirmPass]=useState("");
   const [autoRepair,setAutoRepair]=useState(false),[diagnostic,setDiagnostic]=useState("系統尚未執行診斷"); const hydrated=useRef(false);
-  useEffect(()=>{let id:ReturnType<typeof setInterval>|undefined;const frame=requestAnimationFrame(()=>{setNow(Date.now());setAppeared(localValue());try{const raw=localStorage.getItem(STORAGE_KEY);if(raw)setTimers(clean(JSON.parse(raw)));setAutoRepair(localStorage.getItem("waterblue-auto-repair")==="true");}catch{setDiagnostic("偵測到紀錄格式異常，請執行 Repair");}hydrated.current=true;setReady(true);id=setInterval(()=>setNow(Date.now()),1000);});return()=>{cancelAnimationFrame(frame);if(id)clearInterval(id);};},[]);
+  useEffect(()=>{let id:ReturnType<typeof setInterval>|undefined;const frame=requestAnimationFrame(()=>{setNow(Date.now());setAppeared(localValue());try{const raw=localStorage.getItem(STORAGE_KEY);if(raw)setTimers(clean(JSON.parse(raw)));setAutoRepair(localStorage.getItem("waterblue-auto-repair")==="true");const savedInk=localStorage.getItem(INK_STORAGE_KEY);if(savedInk&&validHex(savedInk)){setTone(savedInk);setInkCode(savedInk);}}catch{setDiagnostic("偵測到紀錄格式異常，請執行 Repair");}hydrated.current=true;setReady(true);id=setInterval(()=>setNow(Date.now()),1000);});return()=>{cancelAnimationFrame(frame);if(id)clearInterval(id);};},[]);
   useEffect(()=>{const token=sessionStorage.getItem(ADMIN_SESSION_KEY);if(!token){queueMicrotask(()=>setAuthChecking(false));return;}adminAuth({action:"verify",sessionToken:token}).then(data=>{setAdmin(!!data.authenticated);setMustChangePassword(!!data.mustChangePassword);if(data.authenticated)setDiagnostic("管理員工作階段已安全恢復");}).catch(()=>{sessionStorage.removeItem(ADMIN_SESSION_KEY);setAdmin(false);}).finally(()=>setAuthChecking(false));},[]);
   useEffect(()=>{if(hydrated.current)localStorage.setItem(STORAGE_KEY,JSON.stringify(timers));},[timers]);
+  useEffect(()=>{if(hydrated.current)localStorage.setItem(INK_STORAGE_KEY,tone);},[tone]);
   useEffect(()=>{if(!hydrated.current)return;localStorage.setItem("waterblue-auto-repair",String(autoRepair));if(!autoRepair)return;const id=setInterval(()=>{setTimers(x=>clean(x));setDiagnostic(`AI 自動巡檢完成・${dateTime(Date.now())}・未發現阻塞`);},15000);return()=>clearInterval(id);},[autoRepair]);
   const ordered=useMemo(()=>[...timers].sort((a,b)=>b.multiplier-a.multiplier || (b.appearedAt+THREE_HOURS-now)-(a.appearedAt+THREE_HOURS-now)),[timers,now]);
   const add=(e:FormEvent)=>{e.preventDefault();if(!ready)return setError("候時錄載入中，請稍候一瞬");const at=new Date(appeared).getTime();if(!monster.trim())return setError("請輸入魔物名稱");if(!Number.isFinite(at))return setError("請輸入正確的日期與時間");if(at>Date.now()+60000)return setError("出現時間不可晚於現在");setTimers(x=>[...x,{id:timerId(),server,monster:monster.trim(),multiplier,appearedAt:at,createdAt:Date.now()}]);setMonster("");setAppeared(localValue());setError("");};
@@ -97,10 +106,12 @@ export default function Home() {
   const changePassword=async(e:FormEvent)=>{e.preventDefault();if(newPass!==confirmPass)return setLoginError("兩次輸入的新密碼不一致");const token=sessionStorage.getItem(ADMIN_SESSION_KEY);if(!token)return setAdmin(false);setAuthBusy(true);setLoginError("");try{await adminAuth({action:"change_password",sessionToken:token,newPassword:newPass});setMustChangePassword(false);setNewPass("");setConfirmPass("");setDiagnostic("新密碼已安全更新・Repair 與 AI 模組已解鎖");}catch(err){setLoginError(err instanceof Error?err.message:"密碼更新失敗");}finally{setAuthBusy(false);}};
   const logout=async()=>{const token=sessionStorage.getItem(ADMIN_SESSION_KEY);sessionStorage.removeItem(ADMIN_SESSION_KEY);setAdmin(false);setMustChangePassword(false);setPass("");if(token)await adminAuth({action:"logout",sessionToken:token}).catch(()=>undefined);};
   const active=timers.filter(x=>x.appearedAt+THREE_HOURS>now).length;
+  const chooseInk=(value:string)=>{const next=value.toUpperCase();setTone(next);setInkCode(next);};
+  const applyInkCode=()=>{if(validHex(inkCode))chooseInk(inkCode);else setInkCode(tone);};
   return <main className="site-shell"><InkCanvas tone={tone} auto={auto} wash={wash}/><div className="paper-grain"/>
     <div className="content-wrap">
-      <header><div className="brand"><span className="seal">水藍</span><div><p className="eyebrow">CROSSGATE ・ RESPAWN &amp; EXP RATE</p><h1>魔物重生・經驗倍率帖</h1></div></div><div className="header-actions"><span className="poster-year">六服共用・三時辰</span><button className="ghost" onClick={()=>setAdminOpen(x=>!x)}>{admin?"管理中":"管理員登入"}</button></div></header>
-      <section className="hero"><div className="hero-orbit" aria-hidden="true"><span>魔</span><i/><b>三時後・再臨</b></div><div className="hero-copy"><p className="vertical">水藍魔力寶貝</p><div><p className="hero-index">第壹幕　重生候時錄</p><h2>記下現身一刻，<br/><em>倍率高者先行。</em></h2><p>六大伺服器共用・跨日安全計時・依經驗倍率與剩餘時間自動排序。</p><div className="hero-notes"><span>倍率優先</span><span>跨日無誤</span><span>三時重生</span></div></div></div>
+      <header><div className="brand"><h1>魔物重生・經驗倍率</h1></div><button className="ghost" onClick={()=>setAdminOpen(x=>!x)}>{admin?"管理中":"管理員登入"}</button></header>
+      <section className="hero"><div className="hero-orbit" aria-hidden="true"><span>魔</span><i/></div><div className="hero-copy"><h2>記錄魔物出現，<br/><em>重生時間一目了然。</em></h2></div>
         <form className="timer-form" onSubmit={add}><div className="form-head"><b>新增狩獵紀錄</b><button type="button" onClick={()=>setAppeared(localValue())}>套用現在時間</button></div><div className="fields">
           <label><span>伺服器</span><select value={server} onChange={e=>setServer(e.target.value as Server)}>{SERVERS.map((x,i)=><option key={x} value={x}>{i+1}. {x}</option>)}</select></label>
           <label><span>魔物名稱</span><input value={monster} onChange={e=>setMonster(e.target.value)} placeholder="例如：改造殭屍" maxLength={30}/></label>
@@ -112,8 +123,8 @@ export default function Home() {
       <section className="queue"><div className="section-head"><div><p className="kicker">RESPAWN &amp; EXP QUEUE</p><h3>重生與倍率候時錄</h3></div><div className="summary"><b>{active}</b> 計時中　・　<b>{timers.length}</b> 全部紀錄</div></div>
         <div className="servers">{SERVERS.map((x,i)=><span key={x}><b>{i+1}</b>{x}</span>)}</div>
         <div className="timer-list">{ordered.length===0?<div className="empty"><span>◯</span><h4>候時錄尚無墨跡</h4><p>在上方輸入魔物出現時間與倍率，即會自動計算三小時重生並排序。</p></div>:ordered.map((x,i)=>{const end=x.appearedAt+THREE_HOURS,left=Math.max(0,end-now),expired=left<=0,progress=Math.min(100,left/THREE_HOURS*100);return <article className={`timer-card ${expired?"expired":""}`} key={x.id}><div className="rank"><span>{String(i+1).padStart(2,"0")}</span></div><div className="monster"><div className="monster-meta"><span>{x.server}</span><b>{x.multiplier.toFixed(1)} 倍經驗</b></div><h4>{x.monster}</h4><p>現身 {dateTime(x.appearedAt)} ・ 重生 {dateTime(end)}</p></div><div className="count"><div className="count-orbit" style={{background:`conic-gradient(var(--red) ${progress}%, rgba(44,47,40,.12) ${progress}% 100%)`}}><div><span>{expired?"已可重生":"距離重生"}</span><strong>{clock(left)}</strong></div></div></div><button className="remove" onClick={()=>setTimers(t=>t.filter(y=>y.id!==x.id))} aria-label={`刪除 ${x.monster}`}>×</button></article>;})}</div>
-      </section><footer><span>水藍魔力寶貝・六服共用</span><span>倍率優先・剩餘時間次序・資料保留於此裝置</span></footer>
+      </section>
     </div>
-    <nav className="controls" aria-label="水墨控制列"><span>墨色</span><div>{(Object.keys(INKS) as Tone[]).map(k=><button key={k} className={tone===k?"selected":""} style={{background:`rgb(${INKS[k].rgb})`}} onClick={()=>setTone(k)} aria-label={INKS[k].label}/>)}</div><i/><button className={auto?"auto on":"auto"} onClick={()=>setAuto(x=>!x)}><b/>自動演出</button><button className="wash" onClick={()=>setWash(x=>x+1)}>洗い流す</button></nav>
+    <nav className="controls" aria-label="水墨控制列"><span>墨色</span><div className="ink-presets">{INK_PRESETS.map(ink=><button key={ink.hex} className={tone===ink.hex?"selected":""} style={{background:ink.hex}} onClick={()=>chooseInk(ink.hex)} aria-label={ink.label}/>)}</div><label className="color-picker" title="選擇任意墨色色號"><input type="color" value={tone} onChange={e=>chooseInk(e.target.value)}/><span>自訂</span></label><label className="hex-code"><span>#</span><input value={inkCode.replace(/^#/,"")} onChange={e=>setInkCode(`#${e.target.value.replace(/[^0-9a-f]/gi,"").slice(0,6)}`)} onBlur={applyInkCode} onKeyDown={e=>{if(e.key==="Enter")e.currentTarget.blur();}} aria-label="墨色 HEX 色號" maxLength={6}/></label><i/><button className={auto?"auto on":"auto"} onClick={()=>setAuto(x=>!x)}><b/>自動演出</button><button className="wash" onClick={()=>setWash(x=>x+1)}>洗い流す</button></nav>
   </main>;
 }
