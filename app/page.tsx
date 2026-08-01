@@ -112,7 +112,7 @@ export default function Home() {
     <div className="content-wrap">
       <header className="masthead"><div className="brand"><span className="brand-seal">時</span><b>水藍魔力寶貝</b></div><button className="ghost" onClick={()=>setAdminOpen(x=>!x)}>{admin?"管理中":"管理員登入"}</button></header>
       <section className="hero">
-        <div className="poster-scene" aria-hidden="true"><i className="poster-sun"/><i className="ridge ridge-one"/><i className="ridge ridge-two"/><span className="poster-mark">魔</span></div>
+        <div className="poster-scene" aria-hidden="true"><i className="poster-sun"/><span className="poster-mark">三時</span></div>
         <div className="hero-copy"><h1>魔物重生<em>計時器</em></h1></div>
         <form className="timer-form" onSubmit={add}><div className="form-head"><b>新增計時</b><button type="button" onClick={()=>setAppeared(localValue())}>現在時間</button></div><div className="fields">
           <label><span>伺服器</span><select value={server} onChange={e=>setServer(e.target.value as Server)}>{SERVERS.map((x,i)=><option key={x} value={x}>{i+1}. {x}</option>)}</select></label>
