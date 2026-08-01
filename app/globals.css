@@ -123,7 +123,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   position: absolute;
   z-index: 0;
   inset: 0;
-  background: url("/fran-isometric-v2.png") center / cover no-repeat;
+  background: url("/fran-isometric-v2.webp") center / cover no-repeat;
   image-rendering: pixelated;
   filter: saturate(.68) contrast(1.05) sepia(.08);
   opacity: .62;
@@ -141,7 +141,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   right: 0;
   bottom: -2%;
   height: 88%;
-  background: url("/crossgate-party-v2.png") left bottom / contain no-repeat;
+  background: url("/crossgate-party-v2.webp") left bottom / contain no-repeat;
   filter: saturate(.86) contrast(1.04);
   mix-blend-mode: multiply;
 }
@@ -344,7 +344,7 @@ input::placeholder { color: rgba(245,236,215,.42); }
   padding: 70px;
   border: 1px solid var(--navy);
   border-left: 12px solid var(--red);
-  background: linear-gradient(105deg, rgba(25,48,57,.87), rgba(25,48,57,.96)), url("/fran-isometric-v2.png") center / cover;
+  background: linear-gradient(105deg, rgba(25,48,57,.87), rgba(25,48,57,.96)), url("/fran-isometric-v2.webp") center / cover;
   background-blend-mode: multiply;
   color: var(--paper-light);
   text-align: center;
