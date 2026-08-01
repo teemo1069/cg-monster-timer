@@ -318,15 +318,28 @@ input::placeholder { color: rgba(245,236,215,.42); }
 .card-top { display: flex; align-items: center; gap: 10px; padding-bottom: 13px; border-bottom: 1px solid var(--line); }
 .rank span { display: block; padding: 4px 9px; background: var(--red); color: var(--paper-light); font: 800 10px var(--font-geist-mono), monospace; transform: skewX(-7deg); }
 .monster-meta { display: flex; align-items: center; gap: 9px; }
-.monster-meta > span, .monster-meta > b { font-size: 9px; font-weight: 850; letter-spacing: .05em; }
-.monster-meta > b { padding-left: 9px; border-left: 1px solid var(--navy); color: var(--red); }
+.monster-meta > span, .monster-meta > b {
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.4;
+  letter-spacing: .035em;
+}
+.monster-meta > span { font-weight: 800; }
+.monster-meta > b { padding-left: 11px; border-left: 1px solid var(--navy); color: var(--red); }
 .remove { margin-left: auto; width: 30px; height: 30px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 18px; cursor: pointer; }
 .remove:hover { color: var(--paper-light); border-color: var(--red); background: var(--red); }
 .card-body { display: grid; grid-template-columns: minmax(0, 1fr) 210px; align-items: stretch; gap: 20px; padding-top: 20px; }
 .monster { min-width: 0; }
 .monster h4 { margin: 0 0 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 950 clamp(30px, 3.2vw, 44px)/1 "Noto Serif TC", "Songti TC", serif; letter-spacing: -.025em; }
-.monster p { display: flex; gap: 9px; margin: 6px 0; color: var(--muted); font-size: 10px; }
-.monster p span { min-width: 32px; color: var(--navy); font-weight: 850; }
+.monster p {
+  display: flex;
+  gap: 10px;
+  margin: 7px 0;
+  color: #5f574a;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.monster p span { min-width: 34px; color: var(--navy); font-size: 12px; font-weight: 800; }
 .count { min-width: 0; display: grid; }
 .count-orbit { display: grid; place-items: center; border-left: 6px solid var(--red); background: rgba(49,81,90,.09); padding: 18px 20px; }
 .count-orbit > div { display: grid; align-content: center; justify-items: end; }
