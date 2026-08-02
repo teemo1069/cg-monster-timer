@@ -73,8 +73,11 @@ export default function Home() {
       <header className="masthead"><div className="brand"><span className="brand-seal">水藍</span><b>魔力寶貝</b></div><button className="ghost" onClick={()=>setAdminOpen(x=>!x)}>{admin?"管理中":"管理員登入"}</button></header>
       <section className="hero">
         <div className="poster-stage">
-          <div className="poster-scene" role="img" aria-label="法蘭城式等角像素冒險地圖"/>
-          <div className="party-art" role="img" aria-label="短身比例的冒險者隊伍與寵物"/>
+          <div className="poster-current" role="img" aria-label="短身冒險者對抗骷髏、喪屍與幽靈的復古城鎮海報"/>
+          <div className="poster-legacy" aria-hidden="true">
+            <div className="poster-scene"/>
+            <div className="party-art"/>
+          </div>
           <div className="hero-copy"><h1>魔物重生<br/>計時器</h1></div>
         </div>
         <form className="timer-form" onSubmit={add}><div className="form-head"><b>登錄魔物</b><button type="button" onClick={()=>setAppeared(localValue())}>填入現在時間</button></div><div className="fields">

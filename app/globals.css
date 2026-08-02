@@ -103,10 +103,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   content: "";
   position: absolute;
   z-index: 4;
-  inset: 16px;
+  inset: 14px;
   pointer-events: none;
-  border: 1px solid rgba(25,48,57,.42);
-  box-shadow: inset 0 0 0 4px rgba(245,236,215,.25);
+  border: 1px solid rgba(25,48,57,.2);
 }
 .poster-stage::after {
   content: "";
@@ -119,6 +118,13 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
     linear-gradient(90deg, rgba(25,48,57,.08), transparent 20%, transparent 80%, rgba(25,48,57,.11));
   mix-blend-mode: multiply;
 }
+.poster-current {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: #e5d5ad url("/adventure-undead-poster-v3.webp") center / contain no-repeat;
+}
+.poster-legacy { display: none; }
 .poster-scene {
   position: absolute;
   z-index: 0;
@@ -385,7 +391,7 @@ input::placeholder { color: rgba(245,236,215,.42); }
   .brand b { font-size: 11px; letter-spacing: .16em; }
   .ghost { font-size: 9px; }
   .hero { grid-template-columns: 1fr; border-bottom-width: 6px; }
-  .poster-stage { min-height: 570px; border-right: 0; border-bottom: 1px solid rgba(245,236,215,.6); }
+  .poster-stage { min-height: 0; aspect-ratio: 1 / 1; border-right: 0; border-bottom: 1px solid rgba(245,236,215,.6); }
   .party-art { left: -9%; right: -11%; height: 84%; }
   .hero-copy { top: 42px; left: 28px; width: calc(100% - 56px); }
   .hero-copy h1 { font-size: clamp(43px, 11vw, 66px); }
@@ -411,7 +417,7 @@ input::placeholder { color: rgba(245,236,215,.42); }
 }
 
 @media (max-width: 520px) {
-  .poster-stage { min-height: 500px; }
+  .poster-stage { min-height: 0; }
   .party-art { left: -17%; right: -22%; height: 82%; }
   .hero-copy { top: 35px; left: 21px; width: calc(100% - 42px); }
   .hero-copy h1 { font-size: clamp(38px, 13vw, 58px); }
