@@ -122,7 +122,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   position: absolute;
   z-index: 1;
   inset: 0;
-  background: #e5d5ad url("/adventure-undead-poster-v3.webp") center / contain no-repeat;
+  background: #e5d5ad url("/adventure-undead-poster-v4.webp") center / 100% 100% no-repeat;
 }
 .poster-legacy { display: none; }
 .poster-scene {
@@ -391,7 +391,7 @@ input::placeholder { color: rgba(245,236,215,.42); }
   .brand b { font-size: 11px; letter-spacing: .16em; }
   .ghost { font-size: 9px; }
   .hero { grid-template-columns: 1fr; border-bottom-width: 6px; }
-  .poster-stage { min-height: 0; aspect-ratio: 1 / 1; border-right: 0; border-bottom: 1px solid rgba(245,236,215,.6); }
+  .poster-stage { min-height: 0; aspect-ratio: 1290 / 1219; border-right: 0; border-bottom: 1px solid rgba(245,236,215,.6); }
   .party-art { left: -9%; right: -11%; height: 84%; }
   .hero-copy { top: 42px; left: 28px; width: calc(100% - 56px); }
   .hero-copy h1 { font-size: clamp(43px, 11vw, 66px); }
