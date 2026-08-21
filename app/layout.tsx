@@ -15,9 +15,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "水藍魔物重生・經驗倍率帖",
   description: "水藍魔力寶貝六大伺服器共用的魔物重生與經驗倍率排序計時器。",
-  other: {
-    "codex-preview": "development",
-  },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

@@ -9,5 +9,6 @@ export default defineConfig({
   build: {
     outDir: "../dist-github",
     emptyOutDir: true,
+    sourcemap: false,
   },
 });

@@ -1,97 +1,408 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  type CSSProperties,
+  type FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  MAX_STORAGE_CHARS,
+  MAX_TIMERS,
+  MULTIPLIERS,
+  SERVERS,
+  isSafeTimestamp,
+  sanitizeMonster,
+  sanitizeTimers,
+  type Server,
+  type Timer,
+} from "./timer-data";
 
-const SERVERS = ["櫻之舞", "卡連", "露比", "獅子", "歌姬", "雙子"] as const;
-const MULTIPLIERS = Array.from({ length: 101 }, (_, i) => (100 + i) / 100);
 const THREE_HOURS = 10_800_000;
 const STORAGE_KEY = "waterblue-monster-timers-v1";
-const ADMIN_SESSION_KEY = "waterblue-admin-session-v2";
-const ADMIN_AUTH_ENDPOINT = "https://joprrlzjdevijembcdii.supabase.co/functions/v1/admin-auth";
-const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_OTVTHpb0AM_kS_DAA2wVTA_6zcWoP0s";
-type Server = (typeof SERVERS)[number];
-type Timer = { id: string; server: Server; monster: string; multiplier: number; appearedAt: number; createdAt: number };
-type AuthReply = { authenticated?: boolean; username?: string; mustChangePassword?: boolean; sessionToken?: string; expiresAt?: string; changed?: boolean; error?: string };
+const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("zh-TW", {
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
 
-function valid(v: unknown): v is Timer {
-  const x = v as Partial<Timer>;
-  return !!v && typeof v === "object" && typeof x.id === "string" && typeof x.monster === "string" &&
-    typeof x.appearedAt === "number" && Number.isFinite(x.appearedAt) && typeof x.createdAt === "number" && SERVERS.includes(x.server as Server) &&
-    (x.multiplier === undefined || (typeof x.multiplier === "number" && Number.isFinite(x.multiplier)));
+function localValue(date = new Date()) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
 }
-function clean(v: unknown): Timer[] {
-  if (!Array.isArray(v)) return [];
-  const ids = new Set<string>();
-  return v.filter(valid).filter(x => { if (ids.has(x.id)) return false; ids.add(x.id); return true; })
-    .map(x => ({ ...x, monster: x.monster.trim().slice(0, 30) || "未命名魔物", multiplier: MULTIPLIERS.includes(x.multiplier) ? x.multiplier : 1 }));
+
+function timerId() {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
-function localValue(date = new Date()) { return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
-function timerId() { return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`; }
+
 function clock(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
-  return [Math.floor(total / 3600), Math.floor(total % 3600 / 60), total % 60].map(x => String(x).padStart(2, "0")).join(":");
+  return [Math.floor(total / 3600), Math.floor((total % 3600) / 60), total % 60]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":");
 }
+
 function dateTime(ms: number) {
-  return new Intl.DateTimeFormat("zh-TW", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(ms);
+  if (!isSafeTimestamp(ms)) return "時間異常";
+  try {
+    return DATE_TIME_FORMATTER.format(ms);
+  } catch {
+    return "時間異常";
+  }
 }
-async function adminAuth(body: Record<string, unknown>): Promise<AuthReply> {
-  const response = await fetch(ADMIN_AUTH_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "apikey": SUPABASE_PUBLISHABLE_KEY,
-    },
-    body: JSON.stringify(body),
-  });
-  const data = await response.json().catch(() => ({ error: "驗證服務回應格式異常" })) as AuthReply;
-  if (!response.ok) throw new Error(data.error || "驗證服務暫時無法使用");
-  return data;
+
+function readStoredTimers() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return { timers: [] as Timer[], received: 0 };
+  if (raw.length > MAX_STORAGE_CHARS) throw new Error("stored_data_too_large");
+
+  const parsed: unknown = JSON.parse(raw);
+  return {
+    timers: sanitizeTimers(parsed),
+    received: Array.isArray(parsed) ? parsed.length : 0,
+  };
 }
 
 export default function Home() {
-  const [timers,setTimers]=useState<Timer[]>([]),[now,setNow]=useState(0),[ready,setReady]=useState(false),[server,setServer]=useState<Server>(SERVERS[0]);
-  const [monster,setMonster]=useState(""),[multiplier,setMultiplier]=useState(1),[appeared,setAppeared]=useState(""),[error,setError]=useState("");
-  const [adminOpen,setAdminOpen]=useState(false),[admin,setAdmin]=useState(false),[user,setUser]=useState(""),[pass,setPass]=useState(""),[loginError,setLoginError]=useState("");
-  const [authBusy,setAuthBusy]=useState(false),[authChecking,setAuthChecking]=useState(true),[mustChangePassword,setMustChangePassword]=useState(false);
-  const [newPass,setNewPass]=useState(""),[confirmPass,setConfirmPass]=useState("");
-  const [autoRepair,setAutoRepair]=useState(false),[diagnostic,setDiagnostic]=useState("系統尚未執行診斷"); const hydrated=useRef(false);
-  useEffect(()=>{let id:ReturnType<typeof setInterval>|undefined;const frame=requestAnimationFrame(()=>{setNow(Date.now());setAppeared(localValue());try{const raw=localStorage.getItem(STORAGE_KEY);if(raw)setTimers(clean(JSON.parse(raw)));setAutoRepair(localStorage.getItem("waterblue-auto-repair")==="true");}catch{setDiagnostic("偵測到紀錄格式異常，請執行 Repair");}hydrated.current=true;setReady(true);id=setInterval(()=>setNow(Date.now()),1000);});return()=>{cancelAnimationFrame(frame);if(id)clearInterval(id);};},[]);
-  useEffect(()=>{const token=sessionStorage.getItem(ADMIN_SESSION_KEY);if(!token){queueMicrotask(()=>setAuthChecking(false));return;}adminAuth({action:"verify",sessionToken:token}).then(data=>{setAdmin(!!data.authenticated);setMustChangePassword(!!data.mustChangePassword);if(data.authenticated)setDiagnostic("管理員工作階段已安全恢復");}).catch(()=>{sessionStorage.removeItem(ADMIN_SESSION_KEY);setAdmin(false);}).finally(()=>setAuthChecking(false));},[]);
-  useEffect(()=>{if(hydrated.current)localStorage.setItem(STORAGE_KEY,JSON.stringify(timers));},[timers]);
-  useEffect(()=>{if(!hydrated.current)return;localStorage.setItem("waterblue-auto-repair",String(autoRepair));if(!autoRepair)return;const id=setInterval(()=>{setTimers(x=>clean(x));setDiagnostic(`AI 自動巡檢完成・${dateTime(Date.now())}・未發現阻塞`);},15000);return()=>clearInterval(id);},[autoRepair]);
-  const ordered=useMemo(()=>[...timers].sort((a,b)=>b.multiplier-a.multiplier || (b.appearedAt+THREE_HOURS-now)-(a.appearedAt+THREE_HOURS-now)),[timers,now]);
-  const add=(e:FormEvent)=>{e.preventDefault();if(!ready)return setError("候時錄載入中，請稍候一瞬");const at=new Date(appeared).getTime();if(!monster.trim())return setError("請輸入魔物名稱");if(!Number.isFinite(at))return setError("請輸入正確的日期與時間");if(at>Date.now()+60000)return setError("出現時間不可晚於現在");setTimers(x=>[...x,{id:timerId(),server,monster:monster.trim(),multiplier,appearedAt:at,createdAt:Date.now()}]);setMonster("");setAppeared(localValue());setError("");};
-  const login=async(e:FormEvent)=>{e.preventDefault();setAuthBusy(true);setLoginError("");try{const data=await adminAuth({action:"login",username:user,password:pass});if(!data.authenticated||!data.sessionToken)throw new Error("登入驗證失敗");sessionStorage.setItem(ADMIN_SESSION_KEY,data.sessionToken);setAdmin(true);setMustChangePassword(!!data.mustChangePassword);setPass("");setDiagnostic(data.mustChangePassword?"首次安全登入完成・請先更換新密碼":"管理員驗證完成・修復模組已解鎖");}catch(err){setLoginError(err instanceof Error?err.message:"登入失敗");}finally{setAuthBusy(false);}};
-  const verifyAdmin=async()=>{const token=sessionStorage.getItem(ADMIN_SESSION_KEY);if(!token)return false;try{const data=await adminAuth({action:"verify",sessionToken:token});if(!data.authenticated)throw new Error();setMustChangePassword(!!data.mustChangePassword);return !data.mustChangePassword;}catch{sessionStorage.removeItem(ADMIN_SESSION_KEY);setAdmin(false);setLoginError("登入已失效，請重新登入");return false;}};
-  const repair=async()=>{if(!await verifyAdmin())return setDiagnostic("請先完成管理員驗證與密碼更新");let repaired=clean(timers),removed=0;try{const parsed=JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");repaired=clean(parsed);removed=Array.isArray(parsed)?Math.max(0,parsed.length-repaired.length):0;}catch{}setTimers(repaired);localStorage.setItem(STORAGE_KEY,JSON.stringify(repaired));setDiagnostic(`Repair 完成・保留 ${repaired.length} 筆・清除 ${removed} 筆異常資料・跨日時間軸正常`);};
-  const toggleAutoRepair=async(checked:boolean)=>{if(checked&&!await verifyAdmin())return setDiagnostic("管理員登入已失效，無法啟用 AI 自動障礙排除");setAutoRepair(checked);};
-  const changePassword=async(e:FormEvent)=>{e.preventDefault();if(newPass!==confirmPass)return setLoginError("兩次輸入的新密碼不一致");const token=sessionStorage.getItem(ADMIN_SESSION_KEY);if(!token)return setAdmin(false);setAuthBusy(true);setLoginError("");try{await adminAuth({action:"change_password",sessionToken:token,newPassword:newPass});setMustChangePassword(false);setNewPass("");setConfirmPass("");setDiagnostic("新密碼已安全更新・Repair 與 AI 模組已解鎖");}catch(err){setLoginError(err instanceof Error?err.message:"密碼更新失敗");}finally{setAuthBusy(false);}};
-  const logout=async()=>{const token=sessionStorage.getItem(ADMIN_SESSION_KEY);sessionStorage.removeItem(ADMIN_SESSION_KEY);setAdmin(false);setMustChangePassword(false);setPass("");if(token)await adminAuth({action:"logout",sessionToken:token}).catch(()=>undefined);};
-  const active=timers.filter(x=>x.appearedAt+THREE_HOURS>now).length;
-  return <main className="site-shell"><div className="paper-grain"/>
-    <div className="content-wrap">
-      <header className="masthead"><div className="brand"><span className="brand-seal">水藍</span><b>魔力寶貝</b></div><button className="ghost" onClick={()=>setAdminOpen(x=>!x)}>{admin?"管理中":"管理員登入"}</button></header>
-      <section className="hero">
-        <div className="poster-stage">
-          <div className="poster-current" role="img" aria-label="短身冒險者對抗骷髏、喪屍與幽靈的復古城鎮海報"/>
-          <div className="poster-legacy" aria-hidden="true">
-            <div className="poster-scene"/>
-            <div className="party-art"/>
+  const [timers, setTimers] = useState<Timer[]>([]);
+  const [now, setNow] = useState(0);
+  const [ready, setReady] = useState(false);
+  const [server, setServer] = useState<Server>(SERVERS[0]);
+  const [monster, setMonster] = useState("");
+  const [multiplier, setMultiplier] = useState(1);
+  const [appeared, setAppeared] = useState("");
+  const [error, setError] = useState("");
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
+  const [autoRepair, setAutoRepair] = useState(false);
+  const [diagnostic, setDiagnostic] = useState("系統尚未執行診斷");
+  const hydrated = useRef(false);
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const frame = requestAnimationFrame(() => {
+      setNow(Date.now());
+      setAppeared(localValue());
+      try {
+        setTimers(readStoredTimers().timers);
+      } catch {
+        setDiagnostic("偵測到過大或異常的本機紀錄，請執行修復");
+      }
+      hydrated.current = true;
+      setReady(true);
+      interval = setInterval(() => setNow(Date.now()), 1000);
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (interval) clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated.current) return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(timers));
+    } catch {
+      queueMicrotask(() => setDiagnostic("瀏覽器儲存空間不足，最新變更無法保存"));
+    }
+  }, [timers]);
+
+  useEffect(() => {
+    if (!hydrated.current || !autoRepair) return;
+    const interval = setInterval(() => {
+      setTimers((current) => sanitizeTimers(current));
+      setDiagnostic(`自動檢查完成・${dateTime(Date.now())}・未發現異常`);
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, [autoRepair]);
+
+  const ordered = useMemo(
+    () =>
+      [...timers].sort(
+        (a, b) =>
+          b.multiplier - a.multiplier ||
+          b.appearedAt + THREE_HOURS - now - (a.appearedAt + THREE_HOURS - now),
+      ),
+    [timers, now],
+  );
+
+  const add = (event: FormEvent) => {
+    event.preventDefault();
+    if (!ready) return setError("候時錄載入中，請稍候一瞬");
+    if (timers.length >= MAX_TIMERS) return setError(`最多保留 ${MAX_TIMERS} 筆計時紀錄`);
+
+    const safeMonster = sanitizeMonster(monster);
+    const appearedAt = new Date(appeared).getTime();
+    if (!safeMonster) return setError("請輸入魔物名稱");
+    if (!isSafeTimestamp(appearedAt)) return setError("請輸入正確的日期與時間");
+    if (appearedAt > Date.now() + 60_000) return setError("出現時間不可晚於現在");
+
+    setTimers((current) =>
+      sanitizeTimers([
+        ...current,
+        {
+          id: timerId(),
+          server,
+          monster: safeMonster,
+          multiplier,
+          appearedAt,
+          createdAt: Date.now(),
+        },
+      ]),
+    );
+    setMonster("");
+    setAppeared(localValue());
+    setError("");
+  };
+
+  const repair = () => {
+    try {
+      const stored = readStoredTimers();
+      const removed = Math.max(0, stored.received - stored.timers.length);
+      setTimers(stored.timers);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored.timers));
+      setDiagnostic(`修復完成・保留 ${stored.timers.length} 筆・清除 ${removed} 筆異常資料`);
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
+      setTimers([]);
+      setDiagnostic("已清除無法安全讀取的異常紀錄");
+    }
+  };
+
+  const active = timers.filter((timer) => timer.appearedAt + THREE_HOURS > now).length;
+
+  return (
+    <main className="site-shell">
+      <div className="paper-grain" />
+      <div className="content-wrap">
+        <header className="masthead">
+          <div className="brand">
+            <span className="brand-seal">水藍</span>
+            <b>魔力寶貝</b>
           </div>
-          <div className="hero-copy"><h1>魔物重生<br/>計時器</h1></div>
-        </div>
-        <form className="timer-form" onSubmit={add}><div className="form-head"><b>登錄魔物</b><button type="button" onClick={()=>setAppeared(localValue())}>填入現在時間</button></div><div className="fields">
-          <label><span>伺服器</span><select value={server} onChange={e=>setServer(e.target.value as Server)}>{SERVERS.map((x,i)=><option key={x} value={x}>{i+1}. {x}</option>)}</select></label>
-          <label><span>魔物名稱</span><input value={monster} onChange={e=>setMonster(e.target.value)} placeholder="例如：大象" maxLength={30}/></label>
-          <label><span>經驗值倍率</span><select value={multiplier} onChange={e=>setMultiplier(Number(e.target.value))}>{MULTIPLIERS.map(x=><option key={x} value={x}>{x.toFixed(2)} 倍</option>)}</select></label>
-          <label><span>出現時間</span><input type="datetime-local" value={appeared} max={appeared?localValue():undefined} onChange={e=>setAppeared(e.target.value)}/></label><button className="primary" disabled={!ready}>{ready?"開始\n倒數":"載入中"}</button></div>{error&&<p className="error">{error}</p>}</form>
-      </section>
-      {adminOpen&&<section className="admin-panel">{authChecking?<div className="auth-status">正在確認安全登入狀態…</div>:!admin?<form className="login" onSubmit={login}><div><p className="kicker">SECURE ADMIN</p><h3>管理員後端驗證</h3></div><label><span>帳號</span><input value={user} onChange={e=>setUser(e.target.value)} autoComplete="username"/></label><label><span>密碼</span><input type="password" value={pass} onChange={e=>setPass(e.target.value)} autoComplete="current-password"/></label><button className="dark" disabled={authBusy}>{authBusy?"驗證中…":"安全登入"}</button>{loginError&&<p className="error">{loginError}</p>}</form>:mustChangePassword?<form className="password-change" onSubmit={changePassword}><div><p className="kicker">FIRST LOGIN</p><h3>首次登入，請設定新密碼</h3><p>至少 12 字元，並包含英文大小寫、數字、符號中的三類。</p></div><label><span>新密碼</span><input type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} autoComplete="new-password"/></label><label><span>再次輸入</span><input type="password" value={confirmPass} onChange={e=>setConfirmPass(e.target.value)} autoComplete="new-password"/></label><button className="dark" disabled={authBusy}>{authBusy?"更新中…":"儲存新密碼"}</button>{loginError&&<p className="error">{loginError}</p>}</form>:
-        <div className="repair"><div><p className="kicker">SYSTEM CARE・SUPABASE VERIFIED</p><h3>Repair 與 AI 障礙排除</h3><p>{diagnostic}</p></div><div className="repair-actions"><button className="dark" onClick={repair}>Repair 立即修復</button><label className="switch-row"><input type="checkbox" checked={autoRepair} onChange={e=>void toggleAutoRepair(e.target.checked)}/><span className="switch"/>AI 自動障礙排除</label><button className="logout" onClick={logout}>安全登出</button></div></div>}</section>}
-      <section className="queue"><div className="section-head"><h3>重生候時錄</h3><div className="summary"><span><b>{active}</b> 計時中</span><i/><span><b>{timers.length}</b> 全部</span></div></div>
-        <div className="queue-layout"><div className="servers">{SERVERS.map((x,i)=><span key={x}><b>{String(i+1).padStart(2,"0")}</b>{x}</span>)}</div>
-        <div className="timer-list">{ordered.length===0?<div className="empty"><span>空</span><h4>尚無狩獵紀錄</h4><p>輸入魔物出現時間，三小時重生倒數便會在此展開。</p></div>:ordered.map((x,i)=>{const end=x.appearedAt+THREE_HOURS,left=Math.max(0,end-now),expired=left<=0,progress=Math.min(100,left/THREE_HOURS*100);return <article className={`timer-card ${expired?"expired":""}`} key={x.id} style={{"--progress":`${progress}%`} as CSSProperties}><div className="card-top"><div className="rank"><span>{String(i+1).padStart(2,"0")}</span></div><div className="monster-meta"><span>{x.server}</span><b>{x.multiplier.toFixed(2)} 倍經驗</b></div><button className="remove" onClick={()=>setTimers(t=>t.filter(y=>y.id!==x.id))} aria-label={`刪除 ${x.monster}`}>×</button></div><div className="card-body"><div className="monster"><h4>{x.monster}</h4><p><span>現身</span>{dateTime(x.appearedAt)}</p><p><span>重生</span>{dateTime(end)}</p></div><div className="count"><div className="count-orbit"><div><span>{expired?"已可重生":"距離重生"}</span><strong>{clock(left)}</strong></div></div></div></div></article>;})}</div></div>
-      </section>
-    </div>
-  </main>;
+          <button
+            className="ghost"
+            type="button"
+            aria-expanded={maintenanceOpen}
+            aria-controls="maintenance-panel"
+            onClick={() => setMaintenanceOpen((current) => !current)}
+          >
+            資料修復
+          </button>
+        </header>
+
+        <section className="hero">
+          <div className="poster-stage">
+            <div
+              className="poster-current"
+              role="img"
+              aria-label="短身冒險者對抗骷髏、喪屍與幽靈的復古城鎮海報"
+            />
+            <div className="hero-copy">
+              <h1>
+                魔物重生
+                <br />
+                計時器
+              </h1>
+            </div>
+          </div>
+
+          <form className="timer-form" onSubmit={add}>
+            <div className="form-head">
+              <b>登錄魔物</b>
+              <button type="button" onClick={() => setAppeared(localValue())}>
+                填入現在時間
+              </button>
+            </div>
+            <div className="fields">
+              <label>
+                <span>伺服器</span>
+                <select value={server} onChange={(event) => setServer(event.target.value as Server)}>
+                  {SERVERS.map((item, index) => (
+                    <option key={item} value={item}>
+                      {index + 1}. {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>魔物名稱</span>
+                <input
+                  value={monster}
+                  onChange={(event) => setMonster(event.target.value)}
+                  placeholder="例如：大象"
+                  maxLength={30}
+                />
+              </label>
+              <label>
+                <span>經驗值倍率</span>
+                <select
+                  value={multiplier}
+                  onChange={(event) => setMultiplier(Number(event.target.value))}
+                >
+                  {MULTIPLIERS.map((item) => (
+                    <option key={item} value={item}>
+                      {item.toFixed(2)} 倍
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>出現時間</span>
+                <input
+                  type="datetime-local"
+                  value={appeared}
+                  min="2000-01-01T00:00"
+                  max={appeared ? localValue() : undefined}
+                  onChange={(event) => setAppeared(event.target.value)}
+                />
+              </label>
+              <button className="primary" disabled={!ready}>
+                {ready ? "開始\n倒數" : "載入中"}
+              </button>
+            </div>
+            {error && (
+              <p className="error" role="alert">
+                {error}
+              </p>
+            )}
+          </form>
+        </section>
+
+        {maintenanceOpen && (
+          <section className="admin-panel" id="maintenance-panel">
+            <div className="repair">
+              <div>
+                <p className="kicker">LOCAL DATA</p>
+                <h3>本機資料修復</h3>
+                <p aria-live="polite">{diagnostic}</p>
+                <p>所有計時紀錄只保存在這台裝置，不會上傳。</p>
+              </div>
+              <div className="repair-actions">
+                <button className="dark" type="button" onClick={repair}>
+                  立即修復
+                </button>
+                <label className="switch-row">
+                  <input
+                    type="checkbox"
+                    checked={autoRepair}
+                    onChange={(event) => setAutoRepair(event.target.checked)}
+                  />
+                  <span className="switch" />
+                  自動檢查
+                </label>
+                <button
+                  className="logout"
+                  type="button"
+                  onClick={() => {
+                    setAutoRepair(false);
+                    setMaintenanceOpen(false);
+                  }}
+                >
+                  關閉
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        <section className="queue">
+          <div className="section-head">
+            <h3>重生候時錄</h3>
+            <div className="summary">
+              <span>
+                <b>{active}</b> 計時中
+              </span>
+              <i />
+              <span>
+                <b>{timers.length}</b> 全部
+              </span>
+            </div>
+          </div>
+
+          <div className="queue-layout">
+            <div className="servers">
+              {SERVERS.map((item, index) => (
+                <span key={item}>
+                  <b>{String(index + 1).padStart(2, "0")}</b>
+                  {item}
+                </span>
+              ))}
+            </div>
+
+            <div className="timer-list">
+              {ordered.length === 0 ? (
+                <div className="empty">
+                  <span>空</span>
+                  <h4>尚無狩獵紀錄</h4>
+                  <p>輸入魔物出現時間，三小時重生倒數便會在此展開。</p>
+                </div>
+              ) : (
+                ordered.map((timer, index) => {
+                  const end = timer.appearedAt + THREE_HOURS;
+                  const left = Math.max(0, end - now);
+                  const expired = left <= 0;
+                  const progress = Math.min(100, (left / THREE_HOURS) * 100);
+
+                  return (
+                    <article
+                      className={`timer-card ${expired ? "expired" : ""}`}
+                      key={timer.id}
+                      style={{ "--progress": `${progress}%` } as CSSProperties}
+                    >
+                      <div className="card-top">
+                        <div className="rank">
+                          <span>{String(index + 1).padStart(2, "0")}</span>
+                        </div>
+                        <div className="monster-meta">
+                          <span>{timer.server}</span>
+                          <b>{timer.multiplier.toFixed(2)} 倍經驗</b>
+                        </div>
+                        <button
+                          className="remove"
+                          type="button"
+                          onClick={() =>
+                            setTimers((current) => current.filter((item) => item.id !== timer.id))
+                          }
+                          aria-label={`刪除 ${timer.monster}`}
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <div className="card-body">
+                        <div className="monster">
+                          <h4>{timer.monster}</h4>
+                          <p>
+                            <span>現身</span>
+                            {dateTime(timer.appearedAt)}
+                          </p>
+                          <p>
+                            <span>重生</span>
+                            {dateTime(end)}
+                          </p>
+                        </div>
+                        <div className="count">
+                          <div className="count-orbit">
+                            <div>
+                              <span>{expired ? "已可重生" : "距離重生"}</span>
+                              <strong>{clock(left)}</strong>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
 }

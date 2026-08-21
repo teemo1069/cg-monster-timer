@@ -124,33 +124,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   inset: 0;
   background: #e5d5ad url("/adventure-undead-poster-v4.webp") center / 100% 100% no-repeat;
 }
-.poster-legacy { display: none; }
-.poster-scene {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  background: url("/fran-isometric-v2.webp") center / cover no-repeat;
-  image-rendering: pixelated;
-  filter: saturate(.68) contrast(1.05) sepia(.08);
-  opacity: .62;
-}
-.poster-scene::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(245,236,215,.84) 0%, rgba(245,236,215,.2) 40%, rgba(25,48,57,.12) 100%);
-}
-.party-art {
-  position: absolute;
-  z-index: 2;
-  left: -2%;
-  right: 0;
-  bottom: -2%;
-  height: 88%;
-  background: url("/crossgate-party-v2.webp") left bottom / contain no-repeat;
-  filter: saturate(.86) contrast(1.04);
-  mix-blend-mode: multiply;
-}
 .hero-copy {
   position: absolute;
   z-index: 5;
@@ -392,7 +365,6 @@ input::placeholder { color: rgba(245,236,215,.42); }
   .ghost { font-size: 9px; }
   .hero { grid-template-columns: 1fr; border-bottom-width: 6px; }
   .poster-stage { min-height: 0; aspect-ratio: 1290 / 1219; border-right: 0; border-bottom: 1px solid rgba(245,236,215,.6); }
-  .party-art { left: -9%; right: -11%; height: 84%; }
   .hero-copy { top: 42px; left: 28px; width: calc(100% - 56px); }
   .hero-copy h1 { font-size: clamp(43px, 11vw, 66px); }
   .timer-form { min-height: auto; padding: 35px 23px 28px; box-shadow: inset 7px 0 0 var(--red); }
@@ -418,7 +390,6 @@ input::placeholder { color: rgba(245,236,215,.42); }
 
 @media (max-width: 520px) {
   .poster-stage { min-height: 0; }
-  .party-art { left: -17%; right: -22%; height: 82%; }
   .hero-copy { top: 35px; left: 21px; width: calc(100% - 42px); }
   .hero-copy h1 { font-size: clamp(38px, 13vw, 58px); }
   .timer-form { padding-inline: 17px; }
